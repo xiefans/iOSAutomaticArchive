@@ -1,95 +1,129 @@
 # -*- coding: UTF-8 -*-
 import commands
+import json
 import os
+import sys
 import time
-import subprocess
+import urllib
+import zipfile
 
+from biplist import *
+import requests
 
-WORKSPACE_PATH = "/Users/user/Desktop/ios"
-WORKSPACE_NAME = "BookKeeping"
-SCHEME_NAME = "BookKeeping"
-ARCHIVE_PATH = "/Users/user/Desktop/Archive"
+from src.XCodeBuildComand import XCodeBuildComand
+
 
 class AutomaticArchive:
+    command = XCodeBuildComand()
 
-    def __int__(self):
-        pass
+    def __init__(self, configFilePath):
+        config = readPlist(sys.path[0] + "/" + configFilePath)
+        self.method = config["method"]
+        self.workspacePath = config["workspacePath"]
+        self.workspaceName = config["workspaceName"]
+        self.schemeName = config["schemeName"]
+        self.archivePath = config["archivePath"]
+        self.provisioningProfiles = config["provisioningProfiles"]
+        self.bundleId = config["bundleId"]
+        self.signingCertificate = config["signingCertificate"]
+        self.teamID = config["teamID"]
+        self.exportFileName = config["exportFileName"]
+        self.isUploadDSYM = config["isUploadDSYM"]
+        self.appId = config["appId"]
+        self.appKey = config["appKey"]
+        self.dsymFileUploadUrl = config["dsymFileUploadUrl"]
 
-    def beginArchive(self, workspace_name, scheme_name, archive_path):
-        if (self.clean(workspace_name, scheme_name)):
-            if (self.archive(workspace_name, scheme_name, archive_path)):
-                self.export(archive_path, scheme_name, archive_path)
-                self.remove_archive(archive_path, scheme_name)
+        # 完整的workspace文件名称
+        self.workspaceAllName = self.workspaceName + ".xcworkspace"
+        # xcarchive的文件目录
+        self.archiveFilePath = self.archivePath + "/" + self.schemeName + ".xcarchive"
+        # export plist 的完整名称
+        self.exportPlistAllFileName = self.exportFileName + ".plist"
+        # export ipa 包的结果路径
+        self.exportTargetAllPath = self.archivePath + "/" + self.schemeName
 
+    def archive(self):
+        os.chdir(self.workspacePath)
+        if self.command.clean(self.workspaceAllName, self.schemeName):
+            if self.command.archive(self.workspaceAllName, self.schemeName, self.archiveFilePath):
+                self.generateExportPlist()
+                self.command.export(self.exportPlistAllFileName, self.archiveFilePath, self.exportTargetAllPath)
+                self.command.remove_file(self.exportPlistAllFileName)
+                if self.isUploadDSYM:
+                    self.uploadDSYM()
 
-    def clean(self, workspace_name, scheme_name):
-        print "============================= begin clean ======================="
-        start = time.time()
-        command = 'xcodebuild clean -workspace ' + workspace_name + ".xcworkspace" + " -scheme " + scheme_name + " -configuration Release"
-        run = subprocess.Popen(command, shell=True)
-        run.wait()
-        end = time.time()
-        if run.returncode == 0:
-            print "============================= clean success time(%.2fs) =======================" % (end - start)
-            return True
+    def uploadDSYM(self):
+        print "============================= uploading dsym files ======================="
+        name = self.schemeName + ".app.dSYM"
+        uploadPath = self.archivePath + "/" + name + ".zip"
+        time.sleep(2)
+
+        z = zipfile.ZipFile(uploadPath, 'w', zipfile.ZIP_STORED)
+        for i in os.walk(self.archiveFilePath + "/dSYMs/" + name):
+            for n in i[2]:
+                path = i[0].split("/dSYMs/")[1]
+                z.write("".join((i[0],'/',n)), path + "/" + n)
+        z.close()
+        # 上传
+        file = open(uploadPath, 'r')
+        url = self.dsymFileUploadUrl
+        files = {"file": file}
+
+        bundleId = urllib.quote(self.bundleId)
+        productVersion = urllib.quote("1.2.0(100)")
+        fileName = urllib.quote(name + ".zip")
+        data = {
+                "app_key": self.appKey,
+                "app_id": self.appId,
+                "api_version": "1",
+                "symbolType": "2",
+                "bundleId": bundleId,
+                "productVersion": productVersion,
+                "fileName": fileName,
+                "channel": "appstore"
+                }
+        res = requests.post(url + "?app_key=" + self.appKey + "&app_id=" + self.appId, data, files=files)
+        dict = json.loads(res)
+        if dict['rtcode'] == 0 & dict['data']['reponseCode'] == "0":
+            print "============================= upload success ======================="
         else:
-            print "============================= clean fail time(%.2fs) =======================" % (end - start)
-            return False
+            print "============================= upload fail ======================="
 
-
-    def archive(self, workspace_name, scheme_name, archive_path):
-        print "============================= begin archive ======================="
-        start = time.time()
-        command = "xcodebuild archive -workspace " + workspace_name + ".xcworkspace -scheme " + scheme_name + " -configuration Release -archivePath " + archive_path + "/" + scheme_name + ".xcarchive"
-        run = subprocess.Popen(command, shell=True)
-        run.wait()
-        end = time.time()
-        if run.returncode == 0:
-            print "============================= archive success time(%.2fs) =======================" % (end - start)
-            return True
-        else:
-            print "============================= archive fail time(%.2fs) =======================" % (end - start)
-            return False
-
-
-    def remove_archive(self, archive_path, scheme_name):
-        command = "rm -rf " + archive_path + "/" + scheme_name + ".xcarchive"
-        commands.getoutput(command);
-
-
-    def export(self, archive_path, scheme_name, export_path):
-        print "============================= begin export ======================="
-        start = time.time()
-        command = "xcodebuild -exportArchive -exportOptionsPlist ExportOptions.plist -archivePath "+ archive_path +"/" + scheme_name + ".xcarchive -exportPath " + export_path + "/" + scheme_name + " -allowProvisioningUpdates"
-        run = subprocess.Popen(command, shell=True)
-        run.wait()
-        end = time.time()
-        if run.returncode == 0:
-            print "============================= export success time(%.2fs) =======================" % (end - start)
-        else:
-            print "============================= export fail time(%.2fs) =======================" % (end - start)
-
+    def generateExportPlist(self):
+        data = open(self.exportPlistAllFileName, 'w')
+        data.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + "\n")
+        data.write(
+            "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">" + "\n")
+        data.write("<plist version=\"1.0\">" + "\n")
+        data.write("<dict>" + "\n")
+        data.write("	<key>compileBitcode</key>" + "\n")
+        data.write("	<false/>" + "\n")
+        data.write("	<key>destination</key>" + "\n")
+        data.write("	<string>export</string>" + "\n")
+        data.write("	<key>method</key>" + "\n")
+        data.write("	<string>" + self.method + "</string>" + "\n")
+        data.write("	<key>provisioningProfiles</key>" + "\n")
+        data.write("	<dict>" + "\n")
+        data.write("		<key>" + self.bundleId + "</key>" + "\n")
+        data.write("		<string>" + self.provisioningProfiles + "</string>" + "\n")
+        data.write("	</dict>" + "\n")
+        data.write("	<key>signingCertificate</key>" + "\n")
+        data.write("	<string>" + self.signingCertificate + "</string>" + "\n")
+        data.write("	<key>signingStyle</key>" + "\n")
+        data.write("	<string>manual</string>" + "\n")
+        data.write("	<key>stripSwiftSymbols</key>" + "\n")
+        data.write("	<true/>" + "\n")
+        data.write("	<key>teamID</key>" + "\n")
+        data.write("	<string>" + self.teamID + "</string>" + "\n")
+        data.write("</dict>" + "\n")
+        data.write("</plist>" + "\n")
+        data.close()
 
     def upload_dandelion(self):
         pass
 
-
     def upload_appstore(self):
         pass
 
-
     def send_email(self):
         pass
-
-
-if __name__ == '__main__':
-    archive = AutomaticArchive()
-    # workspace_path = raw_input("请输入workspace路径（工程根目录）：")
-    # workspace_name = raw_input("情输入workspace名称：")
-    # scheme_name = raw_input("请输入scheme名称：")
-    workspace_path = WORKSPACE_PATH
-    workspace_name = WORKSPACE_NAME
-    scheme_name = SCHEME_NAME
-    archive_path = ARCHIVE_PATH
-    os.chdir(workspace_path)
-    archive.beginArchive(workspace_name, scheme_name, archive_path)

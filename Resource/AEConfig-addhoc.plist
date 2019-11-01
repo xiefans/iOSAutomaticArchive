@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>workspacePath</key>
+	<string>/Users/user/Desktop/EverLens/EverLensUSaddhoc.mobileprovision/client/ios</string>
+	<key>workspaceName</key>
+	<string>EverLens</string>
+	<key>schemeName</key>
+	<string>EverLens</string>
+	<key>archivePath</key>
+	<string>/Users/user/Desktop/Archive</string>
+	<key>provisioningProfiles</key>
+	<string>EverLens_US_addhoc</string>
+	<key>bundleId</key>
+	<string>com.glority.everlens</string>
+	<key>method</key>
+	<string>ad-hoc</string>
+	<key>signingCertificate</key>
+	<string>Apple Distribution</string>
+	<key>teamID</key>
+	<string>NJPCR8YNA5</string>
+	<key>isUploadDSYM</key>
+	<true/>
+	<key>exportFileName</key>
+	<string>ExportOption</string>
+	<key>appId</key>
+	<string>4d761fe318</string>
+	<key>appKey</key>
+	<string>a97c2771-9082-45b8-95e7-b81c10a07dcb</string>
+	<key>dsymFileUploadUrl</key>
+	<string>https://api.bugly.qq.com/openapi/file/upload/symbol</string>
+</dict>
+</plist>
